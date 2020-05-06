@@ -7,6 +7,7 @@
 参考资料：
 
 [【深度学习实战】从零开始深度学习（四）：RNN与自然语言处理](https://blog.csdn.net/Jenny_oxaza/article/details/105708083)
+[【深度学习实战】【nlp-beginner】基于深度学习的文本分类](https://blog.csdn.net/Jenny_oxaza/article/details/105819311)
 
 程序代码：
 
