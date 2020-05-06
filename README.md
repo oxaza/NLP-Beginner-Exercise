@@ -14,3 +14,5 @@
 
 task-2-simple_network_without_pretrained_word_vectors.py 未使用预训练词向量来实现，搭建的是一个简单的网络
 
+task-2-simple_network_with_pretrained_embeddings.py 使用预训练词向量来实现，同样是搭建的一个简单网络
+
