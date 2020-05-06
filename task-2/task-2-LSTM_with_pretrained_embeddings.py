@@ -13,10 +13,11 @@ from torchtext.data import Field, TabularDataset, BucketIterator
 import matplotlib.pyplot as plt
 import time
 from torchtext.vocab import GloVe
+from torch.autograd import Variable
 
 fix_length = 40
 # 创建Field对象
-TEXT = Field(sequential = True, lower=True, batch_first = True, fix_length = fix_length)
+TEXT = Field(sequential = True, lower=True, fix_length = fix_length)
 LABEL = Field(sequential = False, use_vocab = False)
 
 # 从文件中读取数据
@@ -29,11 +30,11 @@ train, vali = dataset.split(0.7)
 
 # 构建词表
 #TEXT.build_vocab(train, max_size=10000, min_freq=10)
-TEXT.build_vocab(train, vectors=GloVe(name='6B', dim=300),max_size=10000,min_freq=20)
+TEXT.build_vocab(train, vectors=GloVe(name='6B', dim=300),max_size=10000, min_freq=20)
 LABEL.build_vocab(train)
 
 # 生成向量的批数据
-bs = 64
+bs = 32
 train_iter, vali_iter = BucketIterator.splits((train, vali), batch_size = bs, 
                                               device= torch.device('cpu'), 
                                               sort_key=lambda x: len(x.Phrase),
@@ -45,29 +46,44 @@ train_iter, vali_iter = BucketIterator.splits((train, vali), batch_size = bs,
 #batch = next(iter(test_iter))
 #text, target = batch.Phrase, batch.Sentiment
 
-# 创建网络模型
-class EmbNet(nn.Module):
-    def __init__(self,emb_size,hidden_size1,hidden_size2=800):
+## 创建模型
+class LSTM(nn.Module):
+    def __init__(self, vocab, hidden_size, n_cat, bs = 1, nl = 2):
         super().__init__()
-        self.embedding = nn.Embedding(emb_size,hidden_size1)
-        self.fc = nn.Linear(hidden_size2, 5)
-        self.softmax = nn.Softmax(dim = 1)
-        
-    def forward(self,x):
-        embeds = self.embedding(x).view(x.size(0),-1)
-        out = self.fc(embeds)
-        out = self.softmax(out)
+        self.hidden_size = hidden_size
+        self.bs = bs
+        self.nl = nl
+        self.n_vocab = len(vocab)
+        self.n_cat = n_cat
+        self.e = nn.Embedding(self.n_vocab, self.hidden_size)
+        self.rnn = nn.LSTM(self.hidden_size, self.hidden_size, self.nl)
+        self.fc2 = nn.Linear(self.hidden_size, self.n_cat)
+        self.sofmax = nn.LogSoftmax(dim = -1)
+    
+    def forward(self, x):
+        bs = x.size()[1]
+        if bs != self.bs:
+            self.bs = bs
+        e_out = self.e(x)
+        h0, c0 = self.init_paras()
+        rnn_o, _ = self.rnn(e_out, (h0, c0))
+        rnn_o = rnn_o[-1]
+        fc = self.fc2(rnn_o)
+        out = self.sofmax(fc)
         return out
+    
+    def init_paras(self):
+        h0 = Variable(torch.zeros(self.nl, self.bs, self.hidden_size))
+        c0 = Variable(torch.zeros(self.nl, self.bs, self.hidden_size))
+        return h0, c0
+        
 
-#model = EmbNet(len(TEXT.vocab.stoi), 20, 20*fix_length)
-model = EmbNet(len(TEXT.vocab.stoi),300, 300*fix_length)
+model = LSTM(TEXT.vocab, hidden_size = 300, n_cat = 5, bs = bs)
 # 利用预训练好的词向量
-model.embedding.weight.data = TEXT.vocab.vectors
-
-#optimizer = optim.Adam(model.parameters(), lr=1e-3)
+model.e.weight.data = TEXT.vocab.vectors
 
 # 冻结embedding层的权重
-model.embedding.weight.requires_grad = False
+model.e.weight.requires_grad = False
 optimizer = optim.Adam([ param for param in model.parameters() if param.requires_grad == True],lr=0.001)
 
 
@@ -87,7 +103,6 @@ def fit(epoch, model, data_loader, phase = 'training'):
         if phase == 'training':
             optimizer.zero_grad()
         output = model(text)
-        
         loss = F.cross_entropy(output, target)
         
         running_loss += F.cross_entropy(output, target, reduction='sum').item()
@@ -108,7 +123,7 @@ val_losses , val_accuracy = [],[]
 
 t0 = time.time()
 
-for epoch in range(1, 100):
+for epoch in range(1, 2):
     print('epoch no. {} :'.format(epoch) + '-'* 15)
     epoch_loss, epoch_accuracy = fit(epoch, model, train_iter,phase='training')
     val_epoch_loss, val_epoch_accuracy = fit(epoch, model, vali_iter,phase='validation')
