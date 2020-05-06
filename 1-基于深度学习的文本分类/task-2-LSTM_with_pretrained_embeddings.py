@@ -34,7 +34,7 @@ TEXT.build_vocab(train, vectors=GloVe(name='6B', dim=300),max_size=10000, min_fr
 LABEL.build_vocab(train)
 
 # 生成向量的批数据
-bs = 32
+bs = 64
 train_iter, vali_iter = BucketIterator.splits((train, vali), batch_size = bs, 
                                               device= torch.device('cpu'), 
                                               sort_key=lambda x: len(x.Phrase),
@@ -66,6 +66,9 @@ class LSTM(nn.Module):
             self.bs = bs
         e_out = self.e(x)
         h0, c0 = self.init_paras()
+        if torch.cuda.is_available():
+            h0 = h0.cuda()
+            c0 = c0.cuda()
         rnn_o, _ = self.rnn(e_out, (h0, c0))
         rnn_o = rnn_o[-1]
         fc = self.fc2(rnn_o)
@@ -95,11 +98,12 @@ def fit(epoch, model, data_loader, phase = 'training'):
         model.eval()
     running_loss = 0.0
     running_correct = 0.0
-            
+       
     for batch_idx, batch in enumerate(data_loader):
         text, target = batch.Phrase, batch.Sentiment
-#        if torch.cuda.is_available():
-#            text, target = text.cuda(), target.cuda()
+        if torch.cuda.is_available():
+            model.cuda()
+            text, target = text.cuda(), target.cuda()
         if phase == 'training':
             optimizer.zero_grad()
         output = model(text)
@@ -123,7 +127,7 @@ val_losses , val_accuracy = [],[]
 
 t0 = time.time()
 
-for epoch in range(1, 2):
+for epoch in range(1, 20):
     print('epoch no. {} :'.format(epoch) + '-'* 15)
     epoch_loss, epoch_accuracy = fit(epoch, model, train_iter,phase='training')
     val_epoch_loss, val_epoch_accuracy = fit(epoch, model, vali_iter,phase='validation')
